@@ -11,8 +11,21 @@
 #include <string.h>
 #include <libgen.h>
 #include <dirent.h>
+#include <dlfcn.h>
 
 #define NPOLLFDS 2
+
+int loadModule(char *modulePath){
+	printf("Loading module: %s\n", modulePath);
+	void *dlhandle=dlopen(modulePath, RTLD_LAZY);
+	if(dlhandle==NULL){
+		printf("%s\n", dlerror());
+		printf("Failed to load module: %s\n", modulePath);
+		return 0;
+	}
+	dlclose(dlhandle);
+	return 1;
+}
 
 int loadModules(char *moduleDir){
 	DIR *mDir=opendir(moduleDir);
@@ -27,12 +40,13 @@ int loadModules(char *moduleDir){
 	}
 	
 	while((entt=readdir(mDir))!=NULL){
-		dirName=strdup(moduleDir);
-		dirName=realloc(dirName, strlen(dirName)+2+strlen(entt->d_name));
-		strcat(dirName, "/");
-		strcat(dirName, entt->d_name);
-		printf("Loading module: %s\n", dirName);
-		//loadModule(dirName);
+		if(strcmp(entt->d_name, ".")&&strcmp(entt->d_name, "..")){
+			dirName=strdup(moduleDir);
+			dirName=realloc(dirName, strlen(dirName)+2+strlen(entt->d_name));
+			strcat(dirName, "/");
+			strcat(dirName, entt->d_name);
+			loadModule(dirName);
+		}
 	}
 	
 	return 1;
