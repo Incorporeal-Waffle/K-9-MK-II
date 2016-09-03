@@ -3,20 +3,18 @@
 int sockfd;
 char *sHost, *sPort, *nick, *rName, *userName;
 
-
-struct prefix{
+struct message{
+	char *original;
+	
+	//prefix
 	char *name;
 	char *user;
 	char *host;
-};
-
-struct params{
-	struct params *nParam;
-	char *trailing;
-};
-
-struct message{
-	struct prefix prefix;
+	
+	//command
 	char *command;
-	struct params params;
+	
+	//params
+	char *params;
+	char *trailing;
 };

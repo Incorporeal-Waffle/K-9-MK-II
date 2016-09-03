@@ -6,10 +6,116 @@
 #include "printfs.h"
 #include "k-9.h"
 
+int messageDump(struct message *pMsg){
+	iPrintf("original: %s$\n", pMsg->original);
+	
+	iPrintf("name: %s$\n", pMsg->name);
+	iPrintf("user: %s$\n", pMsg->user);
+	iPrintf("host: %s$\n", pMsg->host);
+	
+	iPrintf("command: %s$\n", pMsg->command);
+	
+	iPrintf("params: %s$\n", pMsg->params);
+	iPrintf("trailing: %s$\n", pMsg->trailing);
+	return 1;
+}
+
+int freeMessage(struct message *msg){
+	free(msg->original);
+
+	free(msg->name);
+	free(msg->user);
+	free(msg->host);
+
+	free(msg->command);
+
+	free(msg->params);
+	free(msg->trailing);
+
+	free(msg);
+	return 1;
+}
+
+struct message *parseMessage(char *msg){
+	/*
+	https://tools.ietf.org/html/rfc1459#section-2.3.1
+	I would copy paste the relevant part here, but idk if that's allowed.
+	*/
+	
+	struct message *pMsg=malloc(sizeof(struct message));
+	char *tmp, *tmp0, *tmp1;
+	
+	if(pMsg==0){
+		ePrintf("Malloc failed when parsing message.\n");
+		return NULL;
+	}
+	
+	pMsg->original=strdup(msg);
+	
+	if(*msg==':'){//prefix (name, user, host)
+		tmp=msg;
+		msg=strchr(msg, ' ');
+		*msg='\0';
+		msg++;//Are these pointer modifications portable to other arches than x86?
+		tmp0=strchr(tmp, '!');
+		tmp1=strchr(tmp, '@');
+		if(tmp0){
+			if(tmp1)
+				pMsg->user=strndup(tmp0, tmp1-tmp0);
+			else
+				pMsg->user=strdup(tmp0);
+			
+			*tmp0='\0';
+			pMsg->name=strdup(tmp);
+			*tmp0='!';
+		}else
+			pMsg->user=NULL;
+		
+		if(tmp1){
+			pMsg->host=strdup(tmp1);
+			if(!tmp0){
+				*tmp1='\0';
+				pMsg->name=strdup(tmp);
+				//*tmp1='@';
+			}
+		}else
+			pMsg->host=NULL;
+		
+		if(!tmp0 && !tmp1)
+			pMsg->name=strdup(tmp);
+		
+	}else{
+		pMsg->name=NULL;
+		pMsg->user=NULL;
+		pMsg->host=NULL;
+	}
+	
+	pMsg->command=strndup(msg, strchr(msg, ' ')-msg);// Is this fine? (pointer math)
+	//Appears to work for me on x86-64, but idk.
+	
+	msg=strchr(msg, ' ');
+	*msg='\0';
+	msg++;
+	
+	tmp0=strchr(msg, ':');
+	if(tmp0){
+		pMsg->trailing=strdup(tmp0+1);
+		*tmp0='\0';
+	}else{
+		tmp0=strrchr(msg, ' ');
+		pMsg->trailing=strdup(tmp0+1);
+		*tmp0='\0';
+	}
+	pMsg->params=strdup(msg);
+	
+	return pMsg;
+}
+
 int recvd(char *rMsg){
 	char *tok=strtok(rMsg, "\n");
 	char *cr;
-
+	struct message *parsedMsg;
+	
 	static char buf[513];
 	static int contflag;
 	
@@ -27,6 +133,9 @@ int recvd(char *rMsg){
 				}
 			}
 			rPrintf("%s\n", tok);// THIS IS WHERE THE MESSAGE IS GOOD FOR USE
+			parsedMsg=parseMessage(tok);
+			//messageDump(parsedMsg);
+			freeMessage(parsedMsg);
 		}else{//Message will continue later
 			if(contflag){//Ugh... Should I even support this? Not gonna bother.
 				iPrintf("Two messages in a row that are lacking a \\r\\n\n");
@@ -35,6 +144,7 @@ int recvd(char *rMsg){
 			}
 			if(strlen(tok)>512){
 				rPrintf("Message too long\n");
+				continue;
 			}else{
 				strcpy(buf, tok);
 			}
@@ -52,7 +162,7 @@ int main(int argc, char **argv){
 	int rbytes;
 	char buf[513];
 	struct pollfd pollfds[2];
-
+	
 	iPrintf("Meow version %s\n", VERSION);
 	if(argc<1){
 		ePrintf("Meow: Invalid number of arguments.\n");
@@ -70,7 +180,7 @@ int main(int argc, char **argv){
 		}
 		if((pollfds[1].revents&POLLIN)||(pollfds[1].revents&POLLPRI)){
 			rbytes=read(sockfd, buf, 512);
-
+			
 			if(rbytes<0){
 				ePrintf("Read error: %s\n", strerror(errno));
 				return 2;
@@ -87,7 +197,7 @@ int main(int argc, char **argv){
 			rbytes=read(STDIN_FILENO, buf, 512);
 			buf[rbytes]=0;
 			sPrintf(sockfd, "%s", buf);
-
+			
 		}
 	}
 	
