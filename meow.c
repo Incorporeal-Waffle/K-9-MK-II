@@ -15,7 +15,7 @@ int recvd(char *rMsg){
 
 int main(int argc, char **argv){
 	int sockfd=*argv[0];
-	int rbytes, pid;
+	int rbytes;
 	char buf[513];
 	struct pollfd pollfds[2];
 
@@ -26,36 +26,28 @@ int main(int argc, char **argv){
 	}
 	
 	pollfds[0].fd=STDIN_FILENO;
-	pollfds[0].events=POLLIN;
+	pollfds[0].events=POLLIN|POLLPRI;
 	pollfds[1].fd=sockfd;
-	pollfds[1].events=POLLIN;
-
-	while(poll(pollfds, 2, -1)>0){
-		if(pollfds[1].revents){//sock
+	pollfds[1].events=POLLIN|POLLPRI;
+	while(poll(pollfds, 2, -1)>=0){
+		if((pollfds[1].revents & POLLERR) || (pollfds[1].revents & POLLHUP)){//sock
+			ePrintf("An error has occured on the socket.\n");
+			return 0;
+		}
+		if((pollfds[1].revents&POLLIN)||(pollfds[1].revents&POLLPRI)){
 			rbytes=read(sockfd, buf, 512);
 
 			if(rbytes<0){
-				iPrintf("rbytes<0\n");
-				switch(errno){
-					default:
-						ePrintf("Read error: %s\n", strerror(errno));
-						return -1;
-						break;
-				}
+				ePrintf("Read error: %s\n", strerror(errno));
+				return 2;
+				break;
+			}
+			if(rbytes>512){
+				iPrintf("rbytes>512\n");
 			}
 			
 			buf[rbytes]=0;
-			pid=fork();
-			switch(pid){
-				case -1://Error
-					ePrintf("Fork failed\n");
-					return 1;
-					break;
-				case 0://Child
-					recvd(strdup(buf));
-					return 0;
-					break;
-			}
+			recvd(strdup(buf));
 		}
 		if(pollfds[0].revents){//stdin
 			rbytes=read(STDIN_FILENO, buf, 512);

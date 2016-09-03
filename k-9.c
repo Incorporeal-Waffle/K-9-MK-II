@@ -103,7 +103,7 @@ int main(int argc, char **argv){
 		}else if(botPid){// Parent
 			waitpid(botPid, &retVal, 0);
 			if(retVal){// Something went wrong. Restart it.
-				iPrintf("Child exited with status %d. Restarting it in 5 sec.\n", retVal);
+				iPrintf("Child exited with status %u. Restarting it in 5 sec.\n", retVal);
 				sleep(5);
 				continue;
 			}else{// Return value 0, successful exit
