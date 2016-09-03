@@ -1,8 +1,10 @@
 .PHONY: all debug
 CFLAGS=-ldl
 
-all: k-9
+all: k-9 meow
 
-debug: CFLAGS += -g -std=c99 -pedantic -Wall -Wextra -D_POSIX_C_SOURCE=200809L -DDEBUG
+debug: CFLAGS += -g -O0 -std=c99 -pedantic -Wall -Wextra -D_POSIX_C_SOURCE=200809L -DDEBUG
 debug: all
 
+k-9: printfs.o
+meow: printfs.o
