@@ -7,7 +7,41 @@
 #include "k-9.h"
 
 int recvd(char *rMsg){
-	rPrintf("%s", rMsg);
+	char *tok=strtok(rMsg, "\n");
+	char *cr;
+
+	static char buf[513];
+	static int contflag;
+	
+	do{//Separate messages
+		if((cr=strchr(tok, '\r'))){//The whole line was received
+			*cr='\0';
+			if(contflag){//Continue incase of missing \r\n in last message
+				contflag=0;
+				if(strlen(tok)+strlen(buf)>=512){//Fuck this
+					iPrintf("Split message too long\n");
+					continue;
+				}else{
+					strcpy(strchr(buf, NULL), tok);
+					tok=buf;
+				}
+			}
+			rPrintf("%s\n", tok);// THIS IS WHERE THE MESSAGE IS GOOD FOR USE
+		}else{//Message will continue later
+			if(contflag){//Ugh... Should I even support this? Not gonna bother.
+				iPrintf("Two messages in a row that are lacking a \\r\\n\n");
+				contflag=0;
+				continue;
+			}
+			if(strlen(tok)>512){
+				rPrintf("Message too long\n");
+			}else{
+				strcpy(buf, tok);
+			}
+			contflag=1;
+			continue;
+		}
+	}while((tok=strtok(NULL, "\n"))!=0);
 	
 	free(rMsg);
 	return 1;
