@@ -22,7 +22,7 @@ int recvd(char *rMsg){
 					iPrintf("Split message too long\n");
 					continue;
 				}else{
-					strcpy(strchr(buf, NULL), tok);
+					strcpy(strchr(buf, '\0'), tok);
 					tok=buf;
 				}
 			}
