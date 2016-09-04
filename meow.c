@@ -7,9 +7,10 @@
 #include <sys/wait.h>
 #include "printfs.h"
 #include "k-9.h"
-int sockfd;
 
-int doStuffWithMessage(struct message * msg){
+int sockfd;//Gonna need to use it from several places.
+
+int doStuffWithMessage(struct message * msg){// The main place for adding new stuff
 	rPrintf("%s\n", msg->original);
 	if(strcmp(msg->command, "PING")==0)
 		sPrintf(sockfd, "PONG :%s\r\n", msg->trailing);
@@ -19,14 +20,15 @@ int doStuffWithMessage(struct message * msg){
 	
 	return 1;
 }
-void reapChildren(int idk){
-	idk=idk;//Getting rid of unused parameter warning.
+
+void reapChildren(int idk){//Reap em zombies
+	idk=idk;//Getting rid of unused parameter warning. Can I just not take the param?
 	//iPrintf("Received SIGCHILD %d\n", idk);
 	while(waitpid(-1, NULL, WNOHANG)>0);
 	//iPrintf("Done reaping\n", idk);
 }
 
-int messageDump(struct message *pMsg){
+int messageDump(struct message *pMsg){//Dumps the contents of a message struct
 	iPrintf("original: %s$\n", pMsg->original);
 	
 	iPrintf("name: %s$\n", pMsg->name);
@@ -40,23 +42,23 @@ int messageDump(struct message *pMsg){
 	return 1;
 }
 
-int freeMessage(struct message *msg){
+int freeMessage(struct message *msg){//Frees a message struct
 	free(msg->original);
-
+	
 	free(msg->name);
 	free(msg->user);
 	free(msg->host);
-
+	
 	free(msg->command);
-
+	
 	free(msg->params);
 	free(msg->trailing);
-
+	
 	free(msg);
 	return 1;
 }
 
-struct message *parseMessage(char *msg){
+struct message *parseMessage(char *msg){//Parses a message (line)
 	/*
 	https://tools.ietf.org/html/rfc1459#section-2.3.1
 	I would copy paste the relevant part here, but idk if that's allowed.
@@ -79,30 +81,30 @@ struct message *parseMessage(char *msg){
 		msg++;//Are these pointer modifications portable to other arches than x86?
 		tmp0=strchr(tmp, '!');
 		tmp1=strchr(tmp, '@');
-		if(tmp0){
+		if(tmp0){//There's a '!', get the user
 			if(tmp1)
 				pMsg->user=strndup(tmp0, tmp1-tmp0);
 			else
 				pMsg->user=strdup(tmp0);
 			
 			*tmp0='\0';
-			pMsg->name=strdup(tmp);
+			pMsg->name=strdup(tmp);//Name
 			*tmp0='!';
 		}else
 			pMsg->user=NULL;
 		
-		if(tmp1){
+		if(tmp1){//There was a '@', get the host
 			pMsg->host=strdup(tmp1);
 			if(!tmp0){
 				*tmp1='\0';
-				pMsg->name=strdup(tmp);
+				pMsg->name=strdup(tmp);//Name
 				//*tmp1='@';
 			}
 		}else
 			pMsg->host=NULL;
 		
 		if(!tmp0 && !tmp1)
-			pMsg->name=strdup(tmp);
+			pMsg->name=strdup(tmp);//Name
 		
 	}else{
 		pMsg->name=NULL;
@@ -113,15 +115,15 @@ struct message *parseMessage(char *msg){
 	pMsg->command=strndup(msg, strchr(msg, ' ')-msg);// Is this fine? (pointer math)
 	//Appears to work for me on x86-64, but idk.
 	
-	msg=strchr(msg, ' ');
+	msg=strchr(msg, ' ');//Let's move the msg beginningn past the command
 	*msg='\0';
 	msg++;
 	
 	tmp0=strchr(msg, ':');
-	if(tmp0){
+	if(tmp0){//There is a ':', that means everything after it goes in trailing
 		pMsg->trailing=strdup(tmp0+1);
 		*tmp0='\0';
-	}else{
+	}else{//There is no ':', meaning the last element in the params is actually trailing
 		tmp0=strrchr(msg, ' ');
 		pMsg->trailing=strdup(tmp0+1);
 		*tmp0='\0';
@@ -131,13 +133,13 @@ struct message *parseMessage(char *msg){
 	return pMsg;
 }
 
-int recvd(char *rMsg){
+int recvd(char *rMsg){//Initial processing of freshly received data
 	char *tok=strtok(rMsg, "\n");
 	char *cr;
 	struct message *parsedMsg;
 	int pid;
 	
-	static char buf[513];
+	static char buf[513];//Need to preserve these across function calls
 	static int contflag;
 	
 	do{//Separate messages
@@ -154,7 +156,7 @@ int recvd(char *rMsg){
 				}
 			}
 			
-			pid=fork();
+			pid=fork();//Fork so we don't block when replying to the message
 			switch(pid){
 				case -1:
 					ePrintf("Fork failed\n");
@@ -207,13 +209,14 @@ int main(int argc, char **argv){
 	pollfds[0].events=POLLIN|POLLPRI;
 	pollfds[1].fd=sockfd;
 	pollfds[1].events=POLLIN|POLLPRI;
+	
 	while(poll(pollfds, 2, -1)>=0 || errno==EINTR){
 		signal(SIGCHLD, reapChildren);
 		if((pollfds[1].revents & POLLERR) || (pollfds[1].revents & POLLHUP)){//sock
 			ePrintf("An error has occured on the socket.\n");
 			return 0;
 		}
-		if((pollfds[1].revents&POLLIN)||(pollfds[1].revents&POLLPRI)){
+		if((pollfds[1].revents&POLLIN)||(pollfds[1].revents&POLLPRI)){//sock
 			rbytes=read(sockfd, buf, 512);
 			
 			if(rbytes==0){

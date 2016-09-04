@@ -1,4 +1,4 @@
-#define VERSION "0.0.0"
+#define VERSION "0.0.1"
 
 // defaults
 #define USERNAME "K-9"

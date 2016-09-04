@@ -1,4 +1,4 @@
-.PHONY: all debug
+.PHONY: all debug clean
 
 all: k-9 meow
 
@@ -7,3 +7,6 @@ debug: all
 
 k-9: printfs.o
 meow: printfs.o
+
+clean:
+	rm -f k-9 meow printfs.o

@@ -11,16 +11,17 @@
 
 int main(int argc, char **argv){
 	int botPid, retVal;
-	char opt;
+	char opt;//The option for getopt will be stored here
 	struct addrinfo *host, hints;
-
+	
+	//Setting the defaults
 	sHost = HOST;
 	sPort = PORT;
 	nick = NICK;
 	rName = REALNAME;
 	userName = REALNAME;
-
-	while((opt=getopt(argc, argv, "Vhd:p:n:r:u:")) != -1){
+	
+	while((opt=getopt(argc, argv, "Vhd:p:n:r:u:")) != -1){//Parse options
 		switch(opt){
 			case 'd':// Host to connect to 
 				sHost=optarg;
@@ -60,7 +61,7 @@ int main(int argc, char **argv){
 	iPrintf("Connecting to %s on port %s...\n", sHost, sPort);
 	
 	getaddrinfoeaiagainretrything:
-	switch(getaddrinfo(sHost, sPort, &hints, &host)){
+	switch(getaddrinfo(sHost, sPort, &hints, &host)){//Resolve
 		case 0:
 			break;
 		case EAI_AGAIN:
@@ -76,8 +77,8 @@ int main(int argc, char **argv){
 			ePrintf("Other than that? *shrug*\n");
 			return 1;
 	}
-
-	for(struct addrinfo *addr=host; addr!=NULL; addr=addr->ai_next){
+	
+	for(struct addrinfo *addr=host; addr!=NULL; addr=addr->ai_next){//Connect
 		sockfd=socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol);
 		if(connect(sockfd, addr->ai_addr, addr->ai_addrlen)){//Failed to connect
 			close(sockfd);
@@ -92,10 +93,10 @@ int main(int argc, char **argv){
 		ePrintf("Connection failed.\n");
 		return 1;
 	}
-
-	iPrintf("Connection established.\n");
 	
-	sPrintf(sockfd, "USER %s 0 0 :%s\r\nNICK %s\r\n", userName, rName, nick);// REGISTER
+	iPrintf("Connection established.\n");//Yay
+	
+	sPrintf(sockfd, "USER %s 0 * :%s\r\nNICK %s\r\n", userName, rName, nick);// REGISTER
 	while(1){
 		botPid=fork();
 		if(botPid==-1){// Error
