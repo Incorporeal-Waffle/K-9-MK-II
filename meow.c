@@ -3,8 +3,24 @@
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <signal.h>
+#include <sys/wait.h>
 #include "printfs.h"
 #include "k-9.h"
+int sockfd;
+
+int doStuffWithMessage(struct message * msg){
+	rPrintf("%s\n", msg->original);
+	if(strcmp(msg->command, "PING")==0)
+		sPrintf(sockfd, "PONG :%s\r\n", msg->trailing);
+	
+	return 1;
+}
+void reapChildren(int idk){
+	//iPrintf("Received SIGCHILD %d\n", idk);
+	while(waitpid(-1, NULL, WNOHANG)>0);
+	//iPrintf("Done reaping\n", idk);
+}
 
 int messageDump(struct message *pMsg){
 	iPrintf("original: %s$\n", pMsg->original);
@@ -115,6 +131,7 @@ int recvd(char *rMsg){
 	char *tok=strtok(rMsg, "\n");
 	char *cr;
 	struct message *parsedMsg;
+	int pid;
 	
 	static char buf[513];
 	static int contflag;
@@ -132,10 +149,23 @@ int recvd(char *rMsg){
 					tok=buf;
 				}
 			}
-			rPrintf("%s\n", tok);// THIS IS WHERE THE MESSAGE IS GOOD FOR USE
-			parsedMsg=parseMessage(tok);
-			//messageDump(parsedMsg);
-			freeMessage(parsedMsg);
+			
+			pid=fork();
+			switch(pid){
+				case -1:
+					ePrintf("Fork failed\n");
+					break;
+				case 0:
+					//rPrintf("%s\n", tok);// THIS IS WHERE THE MESSAGE IS GOOD FOR USE
+					parsedMsg=parseMessage(tok);
+					doStuffWithMessage(parsedMsg);
+					//messageDump(parsedMsg);
+					freeMessage(parsedMsg);
+					_Exit(0);
+					break;
+				default:
+					break;
+			}
 		}else{//Message will continue later
 			if(contflag){//Ugh... Should I even support this? Not gonna bother.
 				iPrintf("Two messages in a row that are lacking a \\r\\n\n");
@@ -158,7 +188,7 @@ int recvd(char *rMsg){
 }
 
 int main(int argc, char **argv){
-	int sockfd=*argv[0];
+	sockfd=*argv[0];
 	int rbytes;
 	char buf[513];
 	struct pollfd pollfds[2];
@@ -173,7 +203,8 @@ int main(int argc, char **argv){
 	pollfds[0].events=POLLIN|POLLPRI;
 	pollfds[1].fd=sockfd;
 	pollfds[1].events=POLLIN|POLLPRI;
-	while(poll(pollfds, 2, -1)>=0){
+	while(poll(pollfds, 2, -1)>=0 || errno==EINTR){
+		signal(SIGCHLD, reapChildren);
 		if((pollfds[1].revents & POLLERR) || (pollfds[1].revents & POLLHUP)){//sock
 			ePrintf("An error has occured on the socket.\n");
 			return 0;
@@ -181,6 +212,11 @@ int main(int argc, char **argv){
 		if((pollfds[1].revents&POLLIN)||(pollfds[1].revents&POLLPRI)){
 			rbytes=read(sockfd, buf, 512);
 			
+			if(rbytes==0){
+				iPrintf("Received 0 bytes. Idk what this means,");
+				iPrintf(" but it appears to happen when the connection's closed\n");
+				return 0;
+			}
 			if(rbytes<0){
 				ePrintf("Read error: %s\n", strerror(errno));
 				return 2;
@@ -197,9 +233,9 @@ int main(int argc, char **argv){
 			rbytes=read(STDIN_FILENO, buf, 512);
 			buf[rbytes]=0;
 			sPrintf(sockfd, "%s", buf);
-			
 		}
 	}
 	
+	iPrintf("The main loop has finished somehow.\n");
 	return 0;//What is this doing here again?
 }

@@ -1,5 +1,4 @@
 .PHONY: all debug
-CFLAGS=-ldl
 
 all: k-9 meow
 
