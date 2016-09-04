@@ -6,3 +6,5 @@
 #define NICK "k-9"
 #define HOST "127.0.0.1"
 #define PORT "6667"
+
+char *autoJoinChans[] = { "#example", 0 };

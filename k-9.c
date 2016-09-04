@@ -34,14 +34,15 @@ int main(int argc, char **argv){
 			case 'r':// Realname
 				rName=optarg;
 				break;
-			case 'u':// Realname
+			case 'u':// Username
 				userName=optarg;
 				break;
 			case 'V':
 				printf("%s\n", VERSION);
 				return 0;
 			case 'h':
-				printf("TODO: usage information\n");
+				printf("usage: k-9 [-Vh] [-d host] [-p port] [-n nick] [-r realname]\n");
+				printf("           [-u username]\n");
 				return 0;
 			case '?':
 				return 1;

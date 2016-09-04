@@ -13,10 +13,14 @@ int doStuffWithMessage(struct message * msg){
 	rPrintf("%s\n", msg->original);
 	if(strcmp(msg->command, "PING")==0)
 		sPrintf(sockfd, "PONG :%s\r\n", msg->trailing);
+	if(strcmp(msg->command, "001")==0)
+		for(int i=0; autoJoinChans[i]!=NULL; i++)
+			sPrintf(sockfd, "JOIN %s\r\n", autoJoinChans[i]);
 	
 	return 1;
 }
 void reapChildren(int idk){
+	idk=idk;//Getting rid of unused parameter warning.
 	//iPrintf("Received SIGCHILD %d\n", idk);
 	while(waitpid(-1, NULL, WNOHANG)>0);
 	//iPrintf("Done reaping\n", idk);
