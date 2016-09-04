@@ -6,5 +6,7 @@
 #define NICK "k-9"
 #define HOST "127.0.0.1"
 #define PORT "6667"
+#define PREFIXC ':'
 
 char *autoJoinChans[] = { "#example", 0 };
+char *autoRunCmds[] = { "WHOIS k-9", 0 };

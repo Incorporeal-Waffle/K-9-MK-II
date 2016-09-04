@@ -12,12 +12,25 @@ int sockfd;//Gonna need to use it from several places.
 
 int doStuffWithMessage(struct message * msg){// The main place for adding new stuff
 	rPrintf("%s\n", msg->original);
-	if(strcmp(msg->command, "PING")==0)
+	if(!strcmp(msg->command, "PING"))
 		sPrintf(sockfd, "PONG :%s\r\n", msg->trailing);
-	if(strcmp(msg->command, "001")==0)
+	if(!strcmp(msg->command, "001")){
 		for(int i=0; autoJoinChans[i]!=NULL; i++)
 			sPrintf(sockfd, "JOIN %s\r\n", autoJoinChans[i]);
-	
+		for(int i=0; autoRunCmds[i]!=NULL; i++)
+			sPrintf(sockfd, "%s\r\n", autoRunCmds[i]);
+	}
+	if(strcmp(msg->command, "PRIVMSG")==0){
+		if(!strcmp("ping", msg->trailing)){
+			*strchr(msg->params, ' ')='\0';
+			sPrintf(sockfd, "PRIVMSG %s :pong\r\n", msg->params);
+			*strchr(msg->params, ' ')=' ';
+		}
+		if(*msg->trailing==PREFIXC){
+			msg->trailing++;
+			msg->trailing--;
+		}
+	}
 	return 1;
 }
 
