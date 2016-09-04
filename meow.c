@@ -5,41 +5,12 @@
 #include <errno.h>
 #include <signal.h>
 #include <sys/wait.h>
+#include <sys/socket.h>
+#include <netdb.h>
 #include "printfs.h"
 #include "k-9.h"
 
 int sockfd;//Gonna need to use it from several places.
-
-int doStuffWithMessage(struct message * msg){// The main place for adding new stuff
-	rPrintf("%s\n", msg->original);
-	if(!strcmp(msg->command, "PING"))
-		sPrintf(sockfd, "PONG :%s\r\n", msg->trailing);
-	if(!strcmp(msg->command, "001")){
-		for(int i=0; autoJoinChans[i]!=NULL; i++)
-			sPrintf(sockfd, "JOIN %s\r\n", autoJoinChans[i]);
-		for(int i=0; autoRunCmds[i]!=NULL; i++)
-			sPrintf(sockfd, "%s\r\n", autoRunCmds[i]);
-	}
-	if(strcmp(msg->command, "PRIVMSG")==0){
-		if(!strcmp("ping", msg->trailing)){
-			*strchr(msg->params, ' ')='\0';
-			sPrintf(sockfd, "PRIVMSG %s :pong\r\n", msg->params);
-			*strchr(msg->params, ' ')=' ';
-		}
-		if(*msg->trailing==PREFIXC){
-			msg->trailing++;
-			msg->trailing--;
-		}
-	}
-	return 1;
-}
-
-void reapChildren(int idk){//Reap em zombies
-	idk=idk;//Getting rid of unused parameter warning. Can I just not take the param?
-	//iPrintf("Received SIGCHILD %d\n", idk);
-	while(waitpid(-1, NULL, WNOHANG)>0);
-	//iPrintf("Done reaping\n", idk);
-}
 
 int messageDump(struct message *pMsg){//Dumps the contents of a message struct
 	iPrintf("original: %s$\n", pMsg->original);
@@ -53,6 +24,109 @@ int messageDump(struct message *pMsg){//Dumps the contents of a message struct
 	iPrintf("params: %s$\n", pMsg->params);
 	iPrintf("trailing: %s$\n", pMsg->trailing);
 	return 1;
+}
+
+int sConnect(char *hostname, char *port){
+	int fd=-1;
+	struct addrinfo *host, hints;
+	
+	hints.ai_family=AF_UNSPEC;
+	hints.ai_socktype=SOCK_STREAM;
+	hints.ai_protocol=0;
+	hints.ai_flags=0;
+	
+	getaddrinfoeaiagainretrything:
+	switch(getaddrinfo(hostname, port, &hints, &host)){//Resolve
+		case 0:
+			break;
+		case EAI_AGAIN:
+			sleep(5);
+			// If you've got a significantly better way to handle this, lemme know.
+			goto getaddrinfoeaiagainretrything;
+			break;
+		case EAI_SYSTEM:
+			ePrintf("getaddrinfo: %s\n", strerror(errno));
+			return 1;
+		default:
+			ePrintf("Some sort of a getaddrinfo issue occurred. Check your args.\n");
+			ePrintf("Other than that? *shrug*\n");
+			return 1;
+	}
+	
+	for(struct addrinfo *addr=host; addr!=NULL; addr=addr->ai_next){//Connect
+		fd=socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol);
+		if(connect(fd, addr->ai_addr, addr->ai_addrlen)){//Failed to connect
+			close(fd);
+			fd=-1;
+			continue;
+		}
+		freeaddrinfo(host);
+		break;
+	}
+	
+	
+	return fd;
+}
+
+int doStuffWithMessage(struct message * msg){// The main place for adding new stuff
+	char *targetChan, *cptmp;
+	rPrintf("%s\n", msg->original);
+	if(!strcmp(msg->command, "PING"))
+		sPrintf(sockfd, "PONG :%s\r\n", msg->trailing);
+	if(!strcmp(msg->command, "001")){
+		for(int i=0; autoJoinChans[i]!=NULL; i++)
+			sPrintf(sockfd, "JOIN %s\r\n", autoJoinChans[i]);
+		for(int i=0; autoRunCmds[i]!=NULL; i++)
+			sPrintf(sockfd, "%s\r\n", autoRunCmds[i]);
+	}
+	
+	if(!strcmp("PRIVMSG", msg->command)){
+		cptmp=strchr(msg->params, ' ');
+		if(cptmp){
+			*cptmp='\0';
+			targetChan=strdup(msg->params);
+			*cptmp=' ';
+		}
+		
+		if(!strcmp("h", msg->trailing))
+			sPrintf(sockfd, "PRIVMSG %s :h\r\n", targetChan);
+		
+		if(*msg->trailing==PREFIXC){//Prefixed commands go here
+			msg->trailing++;//Ignore the prefix
+			
+			//Ugly tinyurl thing
+			if(!strncmp("tiny", msg->trailing, 4)){
+				//Warning: This function contains some really ugly http stuff
+				int tinyFd;
+				char buf[513];
+				tinyFd=sConnect("tinyurl.com", "80");
+				if(tinyFd<0){
+					sPrintf(sockfd, "PRIVMSG %s :Failed to connect\r\n", targetChan);
+				}else{
+					sPrintf(tinyFd, 
+					"GET /api-create.php?url=%s HTTP/1.1\r\nHost: tinyurl.com\r\n\r\n",
+					strrchr(msg->trailing, ' ')+1);
+					read(tinyFd, buf, 512);
+					cptmp=strstr(buf, "\r\n\r\n");
+					cptmp+=4;
+					cptmp=strchr(cptmp, '\n')+1;
+					*strchr(cptmp, '\r')='\0';
+					sPrintf(sockfd, "PRIVMSG %s :%s\r\n", targetChan, cptmp);
+				}
+				close(tinyFd);
+			}
+			
+			msg->trailing--;//Restore the prefix
+		}
+	}
+	return 1;
+}
+
+void reapChildren(int idk){//Reap em zombies
+	idk=idk;//Getting rid of unused parameter warning. Can I just not take the param?
+	//iPrintf("Received SIGCHILD %d\n", idk);
+	while(waitpid(-1, NULL, WNOHANG)>0);
+	//iPrintf("Done reaping\n", idk);
 }
 
 int freeMessage(struct message *msg){//Frees a message struct
