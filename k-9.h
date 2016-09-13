@@ -1,4 +1,5 @@
-#include "config.h"
+#ifndef K9H
+#define K9H
 
 int sockfd;
 char *sHost, *sPort, *nick, *rName, *userName;
@@ -18,3 +19,5 @@ struct message{
 	char *params;
 	char *trailing;
 };
+
+#endif

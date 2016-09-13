@@ -7,7 +7,8 @@
 #include <string.h>
 #include <errno.h>
 #include "k-9.h"
-#include "printfs.h"
+#include "config.h"
+#include "etc.h"
 
 int main(int argc, char **argv){
 	int botPid, retVal;
