@@ -11,6 +11,8 @@
 #include "config.h"
 #include "etc.h"
 
+#define IPUTCMDPREFIX '/'
+
 int sockfd;//Gonna need to use it from several places.
 
 int doStuffWithMessage(struct message * msg){// The main place for adding new stuff
@@ -36,7 +38,8 @@ int doStuffWithMessage(struct message * msg){// The main place for adding new st
 		if(!strcmp("h", msg->trailing))
 			sPrintf(sockfd, "PRIVMSG %s :h\r\n", targetChan);
 		
-		if(*msg->trailing==PREFIXC){//Prefixed commands go here
+		//Prefixed commands go here
+		if(*msg->trailing==PREFIXC){
 			msg->trailing++;//Ignore the prefix
 			
 			//Ugly tinyurl thing
@@ -225,6 +228,24 @@ int recvd(char *rMsg){//Initial processing of freshly received data
 	return 1;
 }
 
+int gotInput(char *buf){
+	if(*buf==IPUTCMDPREFIX){
+		buf++;
+		*strchr(buf, '\n')='\0';
+		if(!strcmp(buf, "reload")){
+			iPrintf("Reload command received, exiting\n");
+			_Exit(1);
+		}else{
+			iPrintf("Unknown command\n");
+		}
+		buf--;
+	}else
+		sPrintf(sockfd, "%s", buf);
+	
+	free(buf);
+	return 1;
+}
+
 int main(int argc, char **argv){
 	sockfd=*argv[0];
 	int rbytes;
@@ -271,7 +292,8 @@ int main(int argc, char **argv){
 		if(pollfds[0].revents){//stdin
 			rbytes=read(STDIN_FILENO, buf, 512);
 			buf[rbytes]=0;
-			sPrintf(sockfd, "%s", buf);
+			gotInput(strdup(buf));
+			//sPrintf(sockfd, "%s", buf);
 		}
 	}
 	

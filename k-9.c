@@ -13,7 +13,6 @@
 int main(int argc, char **argv){
 	int botPid, retVal;
 	char opt;//The option for getopt will be stored here
-	struct addrinfo *host, hints;
 	
 	//Setting the defaults
 	sHost = HOST;
@@ -54,41 +53,9 @@ int main(int argc, char **argv){
 		}
 	}
 	
-	hints.ai_family=AF_UNSPEC;
-	hints.ai_socktype=SOCK_STREAM;
-	hints.ai_protocol=0;
-	hints.ai_flags=0;
-	
 	iPrintf("Connecting to %s on port %s...\n", sHost, sPort);
 	
-	getaddrinfoeaiagainretrything:
-	switch(getaddrinfo(sHost, sPort, &hints, &host)){//Resolve
-		case 0:
-			break;
-		case EAI_AGAIN:
-			sleep(5);
-			// If you've got a significantly better way to handle this, lemme know.
-			goto getaddrinfoeaiagainretrything;
-			break;
-		case EAI_SYSTEM:
-			ePrintf("getaddrinfo: %s\n", strerror(errno));
-			return 1;
-		default:
-			ePrintf("Some sort of a getaddrinfo issue occurred. Check your args.\n");
-			ePrintf("Other than that? *shrug*\n");
-			return 1;
-	}
-	
-	for(struct addrinfo *addr=host; addr!=NULL; addr=addr->ai_next){//Connect
-		sockfd=socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol);
-		if(connect(sockfd, addr->ai_addr, addr->ai_addrlen)){//Failed to connect
-			close(sockfd);
-			sockfd=-1;
-			continue;
-		}
-		freeaddrinfo(host);
-		break;
-	}
+	sockfd=sConnect(sHost, sPort);
 	
 	if(sockfd==-1){
 		ePrintf("Connection failed.\n");

@@ -5,6 +5,7 @@
 #include <sys/types.h>
 #include <netdb.h>
 #include <errno.h>
+#include <string.h>
 #include "etc.h"
 
 int messageDump(struct message *pMsg){//Dumps the contents of a message struct
