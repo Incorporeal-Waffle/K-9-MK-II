@@ -1,4 +1,5 @@
 #define VERSION "0.0.1"
+#define SOURCE "https://github.com/Incorporeal-Waffle/K-9-MK-II"
 
 // defaults
 #define USERNAME "K-9"

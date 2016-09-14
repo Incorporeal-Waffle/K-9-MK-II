@@ -17,6 +17,8 @@ int sockfd;//Gonna need to use it from several places.
 
 int doStuffWithMessage(struct message * msg){// The main place for adding new stuff
 	char *targetChan, *cptmp;
+	//cptmp is a temporary variable. Assume it's value unknown at the beginning
+	//of the code of each command
 	rPrintf("%s\n", msg->original);
 	if(!strcmp(msg->command, "PING"))
 		sPrintf(sockfd, "PONG :%s\r\n", msg->trailing);
@@ -31,8 +33,37 @@ int doStuffWithMessage(struct message * msg){// The main place for adding new st
 		cptmp=strchr(msg->params, ' ');
 		if(cptmp){
 			*cptmp='\0';
-			targetChan=strdup(msg->params);
+			if(!strncmp(NICK, msg->params, strlen(NICK)))
+				targetChan=msg->name;
+			else
+				targetChan=strdup(msg->params);
 			*cptmp=' ';
+		}
+		
+		//CTCP. You probably don't want to add any commands before or after this.
+		if(*msg->trailing=='\x01'){
+			iPrintf("That was a CTCP. Be informed.\n");
+			msg->trailing++;
+			if(!strncmp("VERSION", msg->trailing, 7))//VERSION
+				sPrintf(sockfd, "NOTICE %s :\x01VERSION K-9-MK-II %s\x01\r\n",
+					targetChan, VERSION);
+			else if(!strncmp("SOURCE", msg->trailing, 6))//SOURCE
+				sPrintf(sockfd, "NOTICE %s :\x01SOURCE %s\x01\r\n",
+					targetChan, SOURCE);
+			else if(!strncmp("PING", msg->trailing, 4)){//PING
+				cptmp=strchr(msg->trailing, '\x01');
+				if(cptmp){
+					*cptmp='\0';
+					sPrintf(sockfd, "NOTICE %s :\x01PING %s\x01\r\n",
+						targetChan, strchr(msg->trailing, ' ')+1);
+					*cptmp='\x01';
+				}else
+					sPrintf(sockfd, "NOTICE %s :\x01PING \x01\r\n",
+						targetChan);
+			}
+			
+			msg->trailing--;
+			return 1;
 		}
 		
 		if(!strcmp("h", msg->trailing))
@@ -42,8 +73,10 @@ int doStuffWithMessage(struct message * msg){// The main place for adding new st
 		if(*msg->trailing==PREFIXC){
 			msg->trailing++;//Ignore the prefix
 			
-			//Ugly tinyurl thing
-			if(!strncmp("tiny", msg->trailing, 4)){
+			if(!strncmp("echo", msg->trailing, 4)){//Echo
+				cptmp=msg->trailing+5;
+				sPrintf(sockfd, "PRIVMSG %s :%s\r\n", targetChan, cptmp);
+			}else if(!strncmp("tiny", msg->trailing, 4)){//Ugly tinyurl thing
 				//Warning: This function contains some really ugly http stuff
 				int tinyFd;
 				char buf[513];
@@ -114,13 +147,14 @@ struct message *parseMessage(char *msg){//Parses a message (line)
 		msg=strchr(msg, ' ');
 		*msg='\0';
 		msg++;//Are these pointer modifications portable to other arches than x86?
+		tmp++;
 		tmp0=strchr(tmp, '!');
 		tmp1=strchr(tmp, '@');
 		if(tmp0){//There's a '!', get the user
 			if(tmp1)
-				pMsg->user=strndup(tmp0, tmp1-tmp0);
+				pMsg->user=strndup(tmp0+1, tmp1-tmp0-1);
 			else
-				pMsg->user=strdup(tmp0);
+				pMsg->user=strdup(tmp0+1);
 			
 			*tmp0='\0';
 			pMsg->name=strdup(tmp);//Name
@@ -129,7 +163,7 @@ struct message *parseMessage(char *msg){//Parses a message (line)
 			pMsg->user=NULL;
 		
 		if(tmp1){//There was a '@', get the host
-			pMsg->host=strdup(tmp1);
+			pMsg->host=strdup(tmp1+1);
 			if(!tmp0){
 				*tmp1='\0';
 				pMsg->name=strdup(tmp);//Name
