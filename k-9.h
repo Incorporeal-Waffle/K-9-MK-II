@@ -19,5 +19,4 @@ struct message{
 	char *params;
 	char *trailing;
 };
-
 #endif

@@ -9,16 +9,16 @@
 #include "etc.h"
 
 int messageDump(struct message *pMsg){//Dumps the contents of a message struct
-	iPrintf("original: %s$\n", pMsg->original);
+	iPrintf("original: ^%s$\n", pMsg->original);
 	
-	iPrintf("name: %s$\n", pMsg->name);
-	iPrintf("user: %s$\n", pMsg->user);
-	iPrintf("host: %s$\n", pMsg->host);
+	iPrintf("name: ^%s$\n", pMsg->name);
+	iPrintf("user: ^%s$\n", pMsg->user);
+	iPrintf("host: ^%s$\n", pMsg->host);
 	
-	iPrintf("command: %s$\n", pMsg->command);
+	iPrintf("command: ^%s$\n", pMsg->command);
 	
-	iPrintf("params: %s$\n", pMsg->params);
-	iPrintf("trailing: %s$\n", pMsg->trailing);
+	iPrintf("params: ^%s$\n", pMsg->params);
+	iPrintf("trailing: ^%s$\n", pMsg->trailing);
 	return 1;
 }
 

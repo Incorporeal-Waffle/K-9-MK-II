@@ -19,7 +19,7 @@ int main(int argc, char **argv){
 	sPort = PORT;
 	nick = NICK;
 	rName = REALNAME;
-	userName = REALNAME;
+	userName = USERNAME;
 	
 	while((opt=getopt(argc, argv, "Vhd:p:n:r:u:")) != -1){//Parse options
 		switch(opt){
@@ -42,10 +42,9 @@ int main(int argc, char **argv){
 				printf("%s\n", VERSION);
 				return 0;
 			case 'h':
+			case '?':
 				printf("usage: k-9 [-Vh] [-d host] [-p port] [-n nick] [-r realname]\n");
 				printf("           [-u username]\n");
-				return 0;
-			case '?':
 				return 1;
 			default:
 				ePrintf("Dafuq did you pass as an argument?");
@@ -64,7 +63,7 @@ int main(int argc, char **argv){
 	
 	iPrintf("Connection established.\n");//Yay
 	
-	sPrintf(sockfd, "USER %s 0 * :%s\r\nNICK %s\r\n", userName, rName, nick);// REGISTER
+	sPrintf(sockfd, "NICK %s\r\nUSER %s 0 * :%s\r\n", nick, rName, userName);// REGISTER
 	while(1){
 		botPid=fork();
 		if(botPid==-1){// Error

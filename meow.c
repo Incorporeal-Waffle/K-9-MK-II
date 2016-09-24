@@ -19,7 +19,7 @@ int doStuffWithMessage(struct message * msg){// The main place for adding new st
 	char *targetChan, *cptmp;
 	//cptmp is a temporary variable. Assume it's value unknown at the beginning
 	//of the code of each command
-	rPrintf("%s\n", msg->original);
+	//rPrintf("%s\n", msg->original);
 	if(!strcmp(msg->command, "PING"))
 		sPrintf(sockfd, "PONG :%s\r\n", msg->trailing);
 	if(!strcmp(msg->command, "001")){
@@ -29,13 +29,24 @@ int doStuffWithMessage(struct message * msg){// The main place for adding new st
 			sPrintf(sockfd, "%s\r\n", autoRunCmds[i]);
 	}
 	
+	if(!strcmp("433", msg->command))//TODO: alt nicknames
+		iPrintf("Nick already used.\n");
+	if(!strcmp("432", msg->command))
+		iPrintf("Erroneus nickname.\n");
+	if(!strcmp("NICK", msg->command)){
+		if(!strncmp(msg->name, NICK, strlen(NICK))){//TODO: make it use the bot state
+			iPrintf("Nickname changed.\n");//TODO: something, max nick len
+		}
+	}
+	
 	if(!strcmp("PRIVMSG", msg->command)){
 		cptmp=strchr(msg->params, ' ');
 		if(cptmp){
 			*cptmp='\0';
-			if(!strncmp(NICK, msg->params, strlen(NICK)))
+			if(!strncmp(NICK, msg->params, strlen(NICK))){//Reply to the sender,
+				//not yourself
 				targetChan=msg->name;
-			else
+			}else
 				targetChan=strdup(msg->params);
 			*cptmp=' ';
 		}
@@ -104,7 +115,7 @@ int doStuffWithMessage(struct message * msg){// The main place for adding new st
 }
 
 void reapChildren(int idk){//Reap em zombies
-	idk=idk;//Getting rid of unused parameter warning. Can I just not take the param?
+	(void)idk;
 	//iPrintf("Received SIGCHILD %d\n", idk);
 	while(waitpid(-1, NULL, WNOHANG)>0);
 	//iPrintf("Done reaping\n", idk);
@@ -146,7 +157,7 @@ struct message *parseMessage(char *msg){//Parses a message (line)
 		tmp=msg;
 		msg=strchr(msg, ' ');
 		*msg='\0';
-		msg++;//Are these pointer modifications portable to other arches than x86?
+		msg++;
 		tmp++;
 		tmp0=strchr(tmp, '!');
 		tmp1=strchr(tmp, '@');
@@ -182,9 +193,8 @@ struct message *parseMessage(char *msg){//Parses a message (line)
 	}
 	
 	pMsg->command=strndup(msg, strchr(msg, ' ')-msg);// Is this fine? (pointer math)
-	//Appears to work for me on x86-64, but idk.
 	
-	msg=strchr(msg, ' ');//Let's move the msg beginningn past the command
+	msg=strchr(msg, ' ');//Let's move the msg beginning past the command
 	*msg='\0';
 	msg++;
 	
@@ -210,7 +220,6 @@ int recvd(char *rMsg){//Initial processing of freshly received data
 	
 	static char buf[513];//Need to preserve these across function calls
 	static int contflag;
-	
 	do{//Separate messages
 		if((cr=strchr(tok, '\r'))){//The whole line was received
 			*cr='\0';
@@ -225,13 +234,14 @@ int recvd(char *rMsg){//Initial processing of freshly received data
 				}
 			}
 			
+			rPrintf("%s\n", tok);// THIS IS WHERE THE MESSAGE IS GOOD FOR USE
 			pid=fork();//Fork so we don't block when replying to the message
+			//Messages can be processed out of order after this
 			switch(pid){
 				case -1:
 					ePrintf("Fork failed\n");
 					break;
 				case 0:
-					//rPrintf("%s\n", tok);// THIS IS WHERE THE MESSAGE IS GOOD FOR USE
 					parsedMsg=parseMessage(tok);
 					doStuffWithMessage(parsedMsg);
 					//messageDump(parsedMsg);
@@ -248,7 +258,7 @@ int recvd(char *rMsg){//Initial processing of freshly received data
 				continue;
 			}
 			if(strlen(tok)>512){
-				rPrintf("Message too long\n");
+				iPrintf("Message too long\n");
 				continue;
 			}else{
 				strcpy(buf, tok);
