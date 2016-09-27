@@ -2,8 +2,10 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
+#include <sys/shm.h>
 #include <netdb.h>
 #include <stdarg.h>
+#include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include "k-9.h"
@@ -12,7 +14,16 @@
 
 int main(int argc, char **argv){
 	int botPid, retVal;
+	char inttostr[4]="255";
+	char *shmpath;
 	char opt;//The option for getopt will be stored here
+	
+	//Setting up the bot state shared memory thing
+	shmpath=mkdtemp(strdup("/tmp/k-9XXXXXX"));
+	if(!shmpath){
+		ePrintf("Failed to create the temporary dir\n");
+		return 1;
+	}
 	
 	//Setting the defaults
 	sHost = HOST;
@@ -64,6 +75,15 @@ int main(int argc, char **argv){
 	iPrintf("Connection established.\n");//Yay
 	
 	sPrintf(sockfd, "NICK %s\r\nUSER %s 0 * :%s\r\n", nick, rName, userName);// REGISTER
+	//Store the bot state
+	mmAddEntry(shmpath, SHMKEY, "sHost", sHost);
+	mmAddEntry(shmpath, SHMKEY, "sPort", sPort);
+	mmAddEntry(shmpath, SHMKEY, "nick", nick);
+	mmAddEntry(shmpath, SHMKEY, "rName", rName);
+	mmAddEntry(shmpath, SHMKEY, "userName", userName);
+	snprintf(inttostr, 4, "%d", sockfd);
+	mmAddEntry(shmpath, SHMKEY, "sockfd", inttostr);
+	
 	while(1){
 		botPid=fork();
 		if(botPid==-1){// Error
@@ -80,7 +100,7 @@ int main(int argc, char **argv){
 				break;
 			}
 		}else{// Child -- IT'S ALIVE!
-			iPrintf("%d\n", execl("meow", (char *)&sockfd, NULL));
+			iPrintf("%d\n", execl("meow", shmpath));
 			perror("h");
 			break;
 		}

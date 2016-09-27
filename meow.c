@@ -14,9 +14,11 @@
 #define IPUTCMDPREFIX '/'
 
 int sockfd;//Gonna need to use it from several places.
+char *shmpath;
 
 int doStuffWithMessage(struct message * msg){// The main place for adding new stuff
-	char *targetChan, *cptmp;
+	char *targetChan, *cptmp, *cptmp0;
+	struct mmEntry *entry;
 	//cptmp is a temporary variable. Assume it's value unknown at the beginning
 	//of the code of each command
 	//rPrintf("%s\n", msg->original);
@@ -34,16 +36,27 @@ int doStuffWithMessage(struct message * msg){// The main place for adding new st
 	if(!strcmp("432", msg->command))
 		iPrintf("Erroneus nickname.\n");
 	if(!strcmp("NICK", msg->command)){
-		if(!strncmp(msg->name, NICK, strlen(NICK))){//TODO: make it use the bot state
-			iPrintf("Nickname changed.\n");//TODO: something, max nick len
+		entry=mmFind(shmpath, SHMKEY, "nick");
+		cptmp=strdup(entry->value);
+		mmFreeEntry(entry);
+		//iPrintf("Current nick ^%s$ adg ^%s$\n", cptmp, msg->name);
+		if(!strcmp(msg->name, cptmp)){
+			iPrintf("Nickname changed from ^%s$ to ^%s$.\n", cptmp, msg->trailing);
+			mmDelEntry(shmpath, SHMKEY, "nick", cptmp);
+			mmAddEntry(shmpath, SHMKEY, "nick", msg->trailing);
 		}
+		free(cptmp);
 	}
 	
 	if(!strcmp("PRIVMSG", msg->command)){
 		cptmp=strchr(msg->params, ' ');
 		if(cptmp){
 			*cptmp='\0';
-			if(!strncmp(NICK, msg->params, strlen(NICK))){//Reply to the sender,
+			entry=mmFind(shmpath, SHMKEY, "nick");
+			cptmp0=strdup(entry->value);
+			mmFreeEntry(entry);
+			free(cptmp0);
+			if(!strncmp(cptmp0, msg->params, strlen(cptmp0))){//Reply to the sender,
 				//not yourself
 				targetChan=msg->name;
 			}else
@@ -273,12 +286,17 @@ int recvd(char *rMsg){//Initial processing of freshly received data
 }
 
 int gotInput(char *buf){
+	char *tmp;
 	if(*buf==IPUTCMDPREFIX){
 		buf++;
 		*strchr(buf, '\n')='\0';
 		if(!strcmp(buf, "reload")){
 			iPrintf("Reload command received, exiting\n");
 			_Exit(1);
+		}if(!strcmp(buf, "dumpstate")){//TODO: make this thing more helpful
+			iPrintf("Dumping bot state.\n");
+			tmp=mmGetPtr(shmpath, SHMKEY);
+			write(1, tmp, *(int*)tmp);
 		}else{
 			iPrintf("Unknown command\n");
 		}
@@ -291,10 +309,14 @@ int gotInput(char *buf){
 }
 
 int main(int argc, char **argv){
-	sockfd=*argv[0];
 	int rbytes;
 	char buf[513];
 	struct pollfd pollfds[2];
+	shmpath=argv[0];
+	struct mmEntry *entry;
+	entry=mmFind(shmpath, SHMKEY, "sockfd");
+	sockfd=strtol(entry->value, NULL, 10);
+	mmFreeEntry(entry);
 	
 	iPrintf("Meow version %s\n", VERSION);
 	if(argc<1){

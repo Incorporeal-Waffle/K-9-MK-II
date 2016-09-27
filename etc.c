@@ -3,6 +3,8 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/shm.h>
+#include <stdlib.h>
 #include <netdb.h>
 #include <errno.h>
 #include <string.h>
@@ -104,5 +106,214 @@ int iPrintf(char *format, ...){// Print info
 	vdprintf(STDERR_FILENO, format, ap);
 	va_end(ap);
 	dprintf(STDERR_FILENO, "\x1b[0m");
+	return 1;
+}
+
+//mm
+//int shmsize, [int size, char type[]\0, char value[]\0]*
+int mmGetId(char *path, char key){
+	int shmid, *shmptr;
+	key_t shmkey;
+	
+	shmkey=ftok(path, key);
+	if(shmkey==-1){
+		ePrintf("ftok: %s\n", strerror(errno));
+		return -1;
+	}
+	
+	shmid=shmget(shmkey, DEFAULTSHMSIZE, 0640|IPC_CREAT);//Initial thing
+	if(shmid<0){
+		ePrintf("ftok: %s\n", strerror(errno));
+		return -1;
+	}
+	
+	shmptr=shmat(shmid, 0, 0);
+	if(shmptr==(int*)-1){
+		ePrintf("ftok: %s\n", strerror(errno));
+		return -1;
+	}
+	
+	if(*shmptr==0)
+		*shmptr=DEFAULTSHMSIZE;
+	else if(*shmptr!=DEFAULTSHMSIZE){
+		shmid=shmget(shmkey, *shmptr, 0640|IPC_CREAT);
+		if(shmid<0){
+			ePrintf("ftok: %s\n", strerror(errno));
+			return -1;
+		}
+	}
+	
+	return shmid;
+}
+
+char *mmGetPtr(char *path, char key){
+	char *shmptr;
+	int shmid=mmGetId(path, key);
+	
+	shmptr=shmat(shmid, 0, 0);
+	if(shmptr==(char *)-1){
+		ePrintf("ftok: %s\n", strerror(errno));
+		return (char*)-1;//This is totally a char ptr.
+	}
+	
+	return shmptr;
+}
+
+int mmGrowShm(char *path, char key, int newSize){
+	int shmid=mmGetId(path, key);
+	int *shmptr=(int*)mmGetPtr(path, key);
+	int oldSize=*shmptr;
+	key_t shmkey;
+	char *shmcopy;
+	
+	shmcopy=malloc(oldSize);
+	memcpy(shmcopy, shmptr, oldSize);//Save it
+	shmctl(shmid, IPC_RMID, NULL);//Del the shm
+	
+	shmkey=ftok(path, key);//Recreate the shm
+	if(shmkey==-1){
+		ePrintf("ftok: %s\n", strerror(errno));
+		return -1;
+	}
+	
+	shmid=shmget(shmkey, oldSize+newSize, 0640|IPC_CREAT);
+	if(shmid<0){
+		ePrintf("ftok: %s\n", strerror(errno));
+		return -1;
+	}
+	
+	shmptr=(int*)mmGetPtr(path, key);
+	if(shmptr==(int*)-1){
+		ePrintf("ftok: %s\n", strerror(errno));
+		return -1;//This is totally a char ptr. Don't worry.
+	}
+	memcpy(shmptr, shmcopy, oldSize);
+	*shmptr=oldSize+newSize;
+	
+	free(shmcopy);
+	return 1;
+}
+
+int mmAddEntry(char *path, char key, char *type, char *value){
+	//TODO: error checking
+	char *shmptr=mmGetPtr(path, key);
+	int addSize=strlen(type)+strlen(value)+sizeof(int)+2;//2 for the nulls
+	int size=*(int*)shmptr-sizeof(int);//Let's get rid of the header
+	shmptr+=sizeof(int);
+	while(size>=addSize){//While there's still space to add it
+		if(*(int*)shmptr==0){//Found an unused spot to add it
+			break;
+		}
+		else{//Something's here/been here
+			if(!strcmp(shmptr+sizeof(int), "u")){//Something's been here, but not anymore
+				if(*(int*)shmptr>=addSize)//Got room. could leave some empty space tho...
+					break;
+				else{
+					//Unused but no room.
+					size-=*(int*)shmptr;//Go to the next item
+					shmptr+=*(int*)shmptr;
+				}
+			}else{//Used
+				size-=*(int*)shmptr;//Go to the next item
+				shmptr+=*(int*)shmptr;
+			}
+		}
+	}
+	if(size>=addSize){//Everything *SHOULD* be fine, just add it
+		if(*(int*)shmptr==0){//Unused spot
+			*(int*)shmptr=addSize;
+		}
+		shmptr+=sizeof(int);
+		strcpy(shmptr, type);
+		shmptr=strchr(shmptr, '\0')+1;
+		strcpy(shmptr, value);
+	}else{//Need to fucking add space...
+		mmGrowShm(path, key, addSize);
+		mmAddEntry(path, key, type, value);
+	}
+	return 1;
+}
+
+struct mmEntry *mmMkEntry(char *type, char *value){
+	struct mmEntry *entry;
+	entry=calloc(sizeof(struct mmEntry), 1);
+	if(!entry)
+		return (void*)-1;
+	entry->type=strdup(type);
+	entry->value=strdup(value);
+	entry->next=NULL;
+	return entry;
+}
+
+int mmFreeEntry(struct mmEntry *entry){
+	struct mmEntry *n;
+	while(entry){
+		n=entry->next;
+		free(entry->type);
+		free(entry->value);
+		free(entry);
+		entry=n;
+	}
+	return 1;
+}
+
+int mmDumpEntry(struct mmEntry *entry){
+	iPrintf("Type: ^%s$\n", entry->type);
+	iPrintf("Value: ^%s$\n", entry->value);
+	if(!entry->next)
+		iPrintf("Next pointer null.\n");
+	return 1;
+}
+
+struct mmEntry *mmFind(char *path, char key, char *type){
+	struct mmEntry *entry=NULL;//Apparently this isn't 0 by default
+	struct mmEntry *lentry=NULL;
+	char *shmptr=mmGetPtr(path, key);
+	char *ePtr, *ptr;
+	int size=*(int*)shmptr;
+	shmptr+=sizeof(int);
+	ePtr=ptr=shmptr;
+	
+	while(ePtr<(shmptr+size)){
+		if(!(*(int*)ePtr))//Empty area reached
+			break;
+		ptr=ePtr+sizeof(int);//Skip the size for now
+		
+		if(type)
+			if(!strcmp(ptr, type)){
+				if(lentry){
+					lentry->next=mmMkEntry(ptr, strchr(ptr, '\0')+1);
+					lentry=lentry->next;
+				}else{
+					entry=mmMkEntry(ptr, strchr(ptr, '\0')+1);
+					lentry=entry;
+				}
+			}
+		
+		ePtr=ePtr+(*(int*)ePtr);//NEXT
+	}
+	return entry;
+}
+
+int mmDelEntry(char *path, char key, char *type, char *value){
+	//TODO: if value NULL then delete all of type
+	char *shmptr=mmGetPtr(path, key);
+	char *ePtr, *ptr;
+	int size=*(int*)shmptr;
+	shmptr+=sizeof(int);
+	ePtr=ptr=shmptr;
+	
+	while(ePtr<(shmptr+size)){
+		if(!(*(int*)ePtr))//Empty area reached
+			break;
+		ptr=ePtr+sizeof(int);
+		if(!strcmp(ptr, type)){//Same type!
+			if(!strcmp(strchr(ptr, '\0')+1, value)){//Got a match!
+				*ptr='u';//Mark it as unused
+				*(ptr+1)='\0';
+			}
+		}
+		ePtr=ePtr+(*(int*)ePtr);//NEXT
+	}
 	return 1;
 }
