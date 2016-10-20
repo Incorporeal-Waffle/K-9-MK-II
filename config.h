@@ -1,3 +1,4 @@
+// See more options at the beginning of the makefile.
 #define VERSION "0.0.1"
 #define SOURCE "https://github.com/Incorporeal-Waffle/K-9-MK-II"
 
