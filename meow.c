@@ -11,13 +11,34 @@
 #include "config.h"
 #include "etc.h"
 
+#ifdef USE_CURL
+#include <curl/curl.h>
+#endif
+
 #define IPUTCMDPREFIX '/'
 
 int sockfd;//Gonna need to use it from several places.
 char *shmpath;
 
+size_t writedatafromcurl(void *buffer, size_t size, size_t nmemb, void *userp){
+	size_t total=size*nmemb;
+	struct mthing *thing=(struct mthing *)userp;
+	
+	thing->mem=realloc(thing->mem, thing->size+total);
+	if(!thing->mem){
+		ePrintf("Failed to allocate memory for curl\n");
+		return 0;
+	}
+	
+	memcpy(thing->mem+thing->size-1, buffer, total);
+	thing->size += total;
+	thing->mem[thing->size-1]='\0';
+	
+	return total;
+}
+
 int doStuffWithMessage(struct message * msg){// The main place for adding new stuff
-	char *targetChan, *cptmp, *cptmp0;
+	char *targetChan, *cptmp, *cptmp0, *postCmd;
 	struct mmEntry *entry;
 	//cptmp is a temporary variable. Assume it's value unknown at the beginning
 	//of the code of each command
@@ -55,12 +76,12 @@ int doStuffWithMessage(struct message * msg){// The main place for adding new st
 			entry=mmFind(shmpath, SHMKEY, "nick");
 			cptmp0=strdup(entry->value);
 			mmFreeEntry(entry);
-			free(cptmp0);
 			if(!strncmp(cptmp0, msg->params, strlen(cptmp0))){//Reply to the sender,
 				//not yourself
 				targetChan=msg->name;
 			}else
 				targetChan=strdup(msg->params);
+			free(cptmp0);
 			*cptmp=' ';
 		}
 		
@@ -68,6 +89,7 @@ int doStuffWithMessage(struct message * msg){// The main place for adding new st
 		if(*msg->trailing=='\x01'){
 			iPrintf("That was a CTCP. Be informed.\n");
 			msg->trailing++;
+			postCmd=strchr(msg->trailing, ' ')+1;
 			if(!strncmp("VERSION", msg->trailing, 7))//VERSION
 				sPrintf(sockfd, "NOTICE %s :\x01VERSION K-9-MK-II %s\x01\r\n",
 					targetChan, VERSION);
@@ -79,7 +101,7 @@ int doStuffWithMessage(struct message * msg){// The main place for adding new st
 				if(cptmp){
 					*cptmp='\0';
 					sPrintf(sockfd, "NOTICE %s :\x01PING %s\x01\r\n",
-						targetChan, strchr(msg->trailing, ' ')+1);
+						targetChan, postCmd);
 					*cptmp='\x01';
 				}else
 					sPrintf(sockfd, "NOTICE %s :\x01PING \x01\r\n",
@@ -96,11 +118,43 @@ int doStuffWithMessage(struct message * msg){// The main place for adding new st
 		//Prefixed commands go here
 		if(*msg->trailing==PREFIXC){
 			msg->trailing++;//Ignore the prefix
+			postCmd=strchr(msg->trailing, ' ')+1;
 			
 			if(!strncmp("echo", msg->trailing, 4)){//Echo
-				cptmp=msg->trailing+5;
-				sPrintf(sockfd, "PRIVMSG %s :%s\r\n", targetChan, cptmp);
-			}else if(!strncmp("tiny", msg->trailing, 4)){//Ugly tinyurl thing
+				sPrintf(sockfd, "PRIVMSG %s :%s\r\n", targetChan, postCmd);
+			}
+			#ifdef USE_CURL
+			#define TINYURLREQUESTSTRPREFIX "tinyurl.com/api-create.php?url="
+			else if(!strncmp("tiny", msg->trailing, 4)){
+				CURL *hnd;
+				struct mthing retstr;
+				retstr.mem = malloc(1);//INitialize
+				retstr.size = 1;
+				
+				hnd=curl_easy_init();
+				//request string
+				cptmp0=curl_easy_escape(hnd, postCmd, strlen(postCmd));
+				cptmp=malloc(strlen(TINYURLREQUESTSTRPREFIX)+strlen(cptmp0)+1);
+				strcpy(cptmp, TINYURLREQUESTSTRPREFIX);
+				strcat(cptmp, cptmp0);
+				
+				curl_easy_setopt(hnd, CURLOPT_URL, cptmp);
+				//"tinyurl.com/api-create.php?url=http%3a%2f%2fexample.org%2f");
+				curl_easy_setopt(hnd, CURLOPT_WRITEFUNCTION, writedatafromcurl);
+				curl_easy_setopt(hnd, CURLOPT_WRITEDATA, &retstr);
+				curl_easy_perform(hnd);
+				//Request done, use the answer
+				sPrintf(sockfd, "PRIVMSG %s :%s\r\n", targetChan, retstr.mem);
+				//Clean up
+				free(cptmp);
+				free(retstr.mem);
+				retstr.size=0;
+				
+				curl_free(cptmp0);
+				curl_easy_cleanup(hnd);
+				hnd=NULL;
+				/*
+				//Ugly tinyurl thing
 				//Warning: This function contains some really ugly http stuff
 				int tinyFd;
 				char buf[513];
@@ -119,7 +173,10 @@ int doStuffWithMessage(struct message * msg){// The main place for adding new st
 					sPrintf(sockfd, "PRIVMSG %s :%s\r\n", targetChan, cptmp);
 				}
 				close(tinyFd);
+				*/
+				
 			}
+			#endif
 			
 			msg->trailing--;//Restore the prefix
 		}

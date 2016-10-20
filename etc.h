@@ -9,6 +9,11 @@ int rPrintf(char *format, ...);
 int ePrintf(char *format, ...);
 int iPrintf(char *format, ...);
 
+struct mthing{
+	char *mem;
+	size_t size;
+};
+
 //mm
 #define DEFAULTSHMSIZE 2048
 #define SHMKEY '9'

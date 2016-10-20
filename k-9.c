@@ -100,7 +100,7 @@ int main(int argc, char **argv){
 				break;
 			}
 		}else{// Child -- IT'S ALIVE!
-			iPrintf("%d\n", execl("meow", shmpath));
+			iPrintf("%d\n", execl("meow", shmpath, NULL));
 			perror("h");
 			break;
 		}
