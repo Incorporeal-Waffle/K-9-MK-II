@@ -9,8 +9,108 @@
 #include <errno.h>
 #include <string.h>
 #include "etc.h"
+#include "config.h"
+
+int freeMessage(struct message *msg){//Frees a message struct
+	if(msg){
+		free(msg->original);
+		
+		free(msg->name);
+		free(msg->user);
+		free(msg->host);
+		
+		free(msg->command);
+		
+		free(msg->params);
+		free(msg->trailing);
+		
+		free(msg);
+	}else{
+		return 0;
+	}
+	return 1;
+}
+
+struct message *parseMessage(char *msg){//Parses a message (line)
+	struct message *pMsg=malloc(sizeof(struct message));
+	char *tmp, *tmp0, *tmp1, *omsg;
+	if(pMsg==0){
+		ePrintf("Malloc failed when parsing message.\n");
+		return NULL;
+	}
+	
+	msg=omsg=strdup(msg);
+	pMsg->original=strdup(msg);
+	
+	if(*msg==':'){//prefix (name, user, host)
+		tmp=msg;
+		
+		msg=strchr(msg, ' ');//Skip the prefix for the rest of the function
+		*msg='\0';
+		msg++;
+		
+		tmp++;
+		tmp0=strchr(tmp, '!');
+		tmp1=strchr(tmp, '@');
+		if(tmp1){//There was a '@', get the host
+			*tmp1='\0';
+			tmp1++;
+			pMsg->host=strdup(tmp1);
+		}else
+			pMsg->host=NULL;
+		
+		if(tmp0){//There's a '!', get the user
+			*tmp0='\0';
+			tmp0++;
+			pMsg->user=strdup(tmp0);
+		}else
+			pMsg->user=NULL;
+		
+		pMsg->name=strdup(tmp);//Name
+	}else{
+		pMsg->name=NULL;
+		pMsg->user=NULL;
+		pMsg->host=NULL;
+	}
+	
+	pMsg->command=strndup(msg, strchr(msg, ' ')-msg);
+	msg=strchr(msg, ' ');//Let's move the msg beginning past the command
+	if(msg)
+		*msg='\0';
+	else{
+		ePrintf("Invalid message\n");
+		free(omsg);
+		return 0;
+	}
+	msg++;
+	
+	tmp0=strchr(msg, ':');
+	if(tmp0){//There is a ':', that means everything after it goes in trailing
+		*tmp0='\0';
+		tmp0++;
+		pMsg->trailing=strdup(tmp0);
+	}else{//There is no ':', meaning the last element in the params is actually trailing
+		tmp0=strrchr(msg, ' ');
+		if(tmp0){
+			*tmp0='\0';
+			tmp0++;
+			pMsg->trailing=strdup(tmp0);
+		}else{
+			pMsg->trailing=strdup(msg);
+			*msg='\0';
+		}
+	}
+	pMsg->params=strdup(msg);
+	free(omsg);
+	return pMsg;
+}
+
 
 int messageDump(struct message *pMsg){//Dumps the contents of a message struct
+	if(!pMsg){
+		ePrintf("messagedump got a null pointer\n");
+		return 0;
+	}
 	iPrintf("original: ^%s$\n", pMsg->original);
 	
 	iPrintf("name: ^%s$\n", pMsg->name);
@@ -66,7 +166,109 @@ int sConnect(char *hostname, char *port){
 }
 
 //Printfs
-int sPrintf(int sockfd, char *format, ...){// Send and print
+int sPrintf(int sockfd, char *format, ...){// Send and print after parsing and fixing
+	va_list ap;
+	char *str, *ptr, *optr, *trptr;
+	char msgconstruct[512];
+	int prefixsize=0;
+	int cmdargsize=0;
+	int trailingsize=0;
+	int skip=0;
+	struct message *msg;
+	struct mmEntry *entry;
+	
+	va_start(ap, format);//Get the string
+	vasprintf(&str, format, ap);
+	// Unfortunately I have to use this nonportable f here for sanity.
+	// If you have ideas for getting rid of this, tell me.
+	va_end(ap);
+	
+	ptr=optr=str;
+	while((ptr=strchr(ptr, '\r'))){// We can have multiple messages here
+		if(ptr)
+			*ptr='\0';
+		msg=parseMessage(str);
+		if(!msg){
+			ePrintf("Message not sent\n");
+			return 0;
+		}
+		
+		//Calculate the prefix size. We're wasting space on non-prefixed commands
+		//, but whatever
+		prefixsize++;// :
+		entry=mmFind(shmpath, SHMKEY, "nick");
+		if(entry){
+			prefixsize+=strlen(entry->value);// Nick
+			mmFreeEntry(entry);
+		}else{
+			prefixsize+=strlen(NICK);
+		}
+		
+		prefixsize++;// !
+		entry=mmFind(shmpath, SHMKEY, "userName");
+		if(entry){
+			prefixsize+=strlen(entry->value);//user
+			mmFreeEntry(entry);
+		}else{
+			prefixsize+=strlen(USERNAME);
+		}
+		
+		prefixsize++;// @
+		entry=mmFind(shmpath, SHMKEY, "botHost");
+		if(entry){
+			prefixsize+=strlen(entry->value);//host
+			mmFreeEntry(entry);
+		}else{
+			prefixsize+=20;
+		}
+		
+		prefixsize++;// space after it
+		cmdargsize=strlen(msg->command)+strlen(msg->params)+3;// +2 for em spaces and :
+		trailingsize=strlen(msg->trailing);
+		
+		trptr=msg->trailing;
+		while(trailingsize>0){
+			*msgconstruct='\0';
+			if(prefixsize+cmdargsize+2<=512){
+				strcat(msgconstruct, msg->command);
+				strcat(msgconstruct, " ");
+				strcat(msgconstruct, msg->params);
+				strcat(msgconstruct, " :");
+			}else{
+				ePrintf("Prefix+command+arg size >= 512. Wtf are you even...\n");
+				free(optr);
+				return 1;
+			}
+			
+			skip=512-2-cmdargsize-prefixsize;
+			if(*trptr!='\n' && memchr(trptr, '\n', skip)){
+				str=memchr(trptr, '\n', skip);
+				*str=' ';
+				skip=str - trptr;
+			}
+			strncat(msgconstruct, trptr, skip);
+			strcat(msgconstruct, "\r\n");
+			trptr+=skip;
+			trailingsize-=skip;
+			
+			printf("\x1b[1;34m");//Colors!
+			printf("%s", msgconstruct);
+			printf("\x1b[0m");
+			dprintf(sockfd, "%s", msgconstruct);
+		}
+		
+		if(*(ptr+1))
+			if(strlen(ptr+1)>2)
+				ptr+=2;
+		str=ptr;
+	}
+	if(ptr && *ptr)
+		iPrintf("Warning: text after the last \\r%s$\n", ptr);
+	free(optr);
+	return 1;
+}
+
+int rawsPrintf(int sockfd, char *format, ...){// Send and print
 	va_list ap;
 	int retval=0;
 	printf("\x1b[1;34m");
@@ -308,7 +510,10 @@ int mmDelEntry(char *path, char key, char *type, char *value){
 			break;
 		ptr=ePtr+sizeof(int);
 		if(!strcmp(ptr, type)){//Same type!
-			if(!strcmp(strchr(ptr, '\0')+1, value)){//Got a match!
+			if(value==NULL){
+				*ptr='u';//Mark it as unused
+				*(ptr+1)='\0';
+			}else if(!strcmp(strchr(ptr, '\0')+1, value)){//Got a match!
 				*ptr='u';//Mark it as unused
 				*(ptr+1)='\0';
 			}

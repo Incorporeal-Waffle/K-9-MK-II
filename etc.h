@@ -1,9 +1,13 @@
 #include "k-9.h"
 
+char *shmpath;
+struct message *parseMessage(char *msg);
+int freeMessage(struct message *msg);
 int messageDump(struct message *pMsg);
 int sConnect(char *hostname, char *port);
 
 //Printfs
+int rawsPrintf(int sockfd, char *format, ...);
 int sPrintf(int sockfd, char *format, ...);
 int rPrintf(char *format, ...);
 int ePrintf(char *format, ...);

@@ -10,5 +10,5 @@
 #define PORT "6667"
 #define PREFIXC ':'
 
-char *autoJoinChans[] = { "#example", 0 };
-char *autoRunCmds[] = { "WHOIS k-9", 0 };
+#define GETAUTOJOINCHANS char *autoJoinChans[] = { "#example", 0 };
+#define GETAUTORUNCOMMANDS char *autoRunCmds[] = { "WHOIS k-9", 0 };

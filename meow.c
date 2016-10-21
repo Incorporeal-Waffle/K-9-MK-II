@@ -17,8 +17,10 @@
 
 #define IPUTCMDPREFIX '/'
 
+GETAUTOJOINCHANS
+GETAUTORUNCOMMANDS
+
 int sockfd;//Gonna need to use it from several places.
-char *shmpath;
 
 size_t writedatafromcurl(void *buffer, size_t size, size_t nmemb, void *userp){
 	size_t total=size*nmemb;
@@ -38,11 +40,16 @@ size_t writedatafromcurl(void *buffer, size_t size, size_t nmemb, void *userp){
 }
 
 int doStuffWithMessage(struct message * msg){// The main place for adding new stuff
-	char *targetChan, *cptmp, *cptmp0, *postCmd;
+	char *targetChan, *postCmd;
 	struct mmEntry *entry;
-	//cptmp is a temporary variable. Assume it's value unknown at the beginning
-	//of the code of each command
-	//rPrintf("%s\n", msg->original);
+	
+	//Temp stuff
+	#ifdef USE_CURL
+	CURL *hnd;
+	#endif
+	struct mthing retstr;
+	char *cptmp, *cptmp0, *cptmp1;
+	
 	if(!strcmp(msg->command, "PING"))
 		sPrintf(sockfd, "PONG :%s\r\n", msg->trailing);
 	if(!strcmp(msg->command, "001")){
@@ -52,6 +59,33 @@ int doStuffWithMessage(struct message * msg){// The main place for adding new st
 			sPrintf(sockfd, "%s\r\n", autoRunCmds[i]);
 	}
 	
+	if(!strcmp("311", msg->command)){
+		cptmp=msg->params;
+		
+		cptmp=strchr(cptmp, ' ')+1;//nick
+		cptmp0=strchr(cptmp, ' ');
+		*cptmp0='\0';
+		mmDelEntry(shmpath, SHMKEY, "nick", NULL);
+		iPrintf("New nick: %s\n", cptmp);
+		mmAddEntry(shmpath, SHMKEY, "nick", cptmp);
+		*cptmp0=' ';
+		
+		cptmp=strchr(cptmp, ' ')+1;//user
+		cptmp0=strchr(cptmp, ' ');
+		*cptmp0='\0';
+		mmDelEntry(shmpath, SHMKEY, "userName", NULL);
+		iPrintf("New name: %s\n", cptmp);
+		mmAddEntry(shmpath, SHMKEY, "userName", cptmp);
+		*cptmp0=' ';
+		
+		cptmp=strchr(cptmp, ' ')+1;//Host
+		cptmp0=strchr(cptmp, ' ');
+		*cptmp0='\0';
+		mmDelEntry(shmpath, SHMKEY, "botHost", NULL);
+		iPrintf("New host: %s\n", cptmp);
+		mmAddEntry(shmpath, SHMKEY, "botHost", cptmp);
+		*cptmp0=' ';
+	}
 	if(!strcmp("433", msg->command))//TODO: alt nicknames
 		iPrintf("Nick already used.\n");
 	if(!strcmp("432", msg->command))
@@ -125,9 +159,7 @@ int doStuffWithMessage(struct message * msg){// The main place for adding new st
 			}
 			#ifdef USE_CURL
 			#define TINYURLREQUESTSTRPREFIX "tinyurl.com/api-create.php?url="
-			else if(!strncmp("tiny", msg->trailing, 4)){
-				CURL *hnd;
-				struct mthing retstr;
+			if(!strncmp("tiny", msg->trailing, 4)){
 				retstr.mem = malloc(1);//INitialize
 				retstr.size = 1;
 				
@@ -180,6 +212,52 @@ int doStuffWithMessage(struct message * msg){// The main place for adding new st
 			
 			msg->trailing--;//Restore the prefix
 		}
+		//No prefix
+		#ifdef USE_CURL
+		if(strstr(msg->trailing, "http://") || strstr(msg->trailing, "https://")){
+			iPrintf("Link found!\n");
+			
+			cptmp=strstr(msg->trailing, "https://") ? strstr(msg->trailing, "https://") :
+			strstr(msg->trailing, "http://");
+			
+			cptmp0=strchr(cptmp, ' ');
+			if(cptmp0)
+				*cptmp0='\0';
+			retstr.mem = malloc(1);//INitialize
+			retstr.size = 1;
+			
+			hnd=curl_easy_init();
+			//request string
+			
+			curl_easy_setopt(hnd, CURLOPT_URL, cptmp);
+			curl_easy_setopt(hnd, CURLOPT_WRITEFUNCTION, writedatafromcurl);
+			curl_easy_setopt(hnd, CURLOPT_WRITEDATA, &retstr);
+			curl_easy_perform(hnd);
+			//Request done, use the answer
+			while((cptmp=strchr(retstr.mem, '\r')))
+				*cptmp=' ';
+			cptmp=strstr(retstr.mem, "<title>");
+			if(cptmp){
+				cptmp1=strstr(retstr.mem, "</title>");
+				if(cptmp1){
+					*cptmp1='\0';
+					iPrintf("Title found\n");
+					sPrintf(sockfd, "PRIVMSG %s :%c2Title:%c4 %s%c\r\n", targetChan, 
+					'\x03', '\x03', cptmp+strlen("<title>"), '\x0f');
+					//Fuck you too, whatever's causing \x03 not to work in the format str
+				}
+			}
+			//Clean up
+			free(retstr.mem);
+			retstr.size=0;
+			
+			if(cptmp0)
+				*cptmp0=' ';
+			
+			curl_easy_cleanup(hnd);
+			hnd=NULL;
+		}
+		#endif
 	}
 	return 1;
 }
@@ -189,97 +267,6 @@ void reapChildren(int idk){//Reap em zombies
 	//iPrintf("Received SIGCHILD %d\n", idk);
 	while(waitpid(-1, NULL, WNOHANG)>0);
 	//iPrintf("Done reaping\n", idk);
-}
-
-int freeMessage(struct message *msg){//Frees a message struct
-	free(msg->original);
-	
-	free(msg->name);
-	free(msg->user);
-	free(msg->host);
-	
-	free(msg->command);
-	
-	free(msg->params);
-	free(msg->trailing);
-	
-	free(msg);
-	return 1;
-}
-
-struct message *parseMessage(char *msg){//Parses a message (line)
-	/*
-	https://tools.ietf.org/html/rfc1459#section-2.3.1
-	I would copy paste the relevant part here, but idk if that's allowed.
-	*/
-	
-	struct message *pMsg=malloc(sizeof(struct message));
-	char *tmp, *tmp0, *tmp1;
-	
-	if(pMsg==0){
-		ePrintf("Malloc failed when parsing message.\n");
-		return NULL;
-	}
-	
-	pMsg->original=strdup(msg);
-	
-	if(*msg==':'){//prefix (name, user, host)
-		tmp=msg;
-		msg=strchr(msg, ' ');
-		*msg='\0';
-		msg++;
-		tmp++;
-		tmp0=strchr(tmp, '!');
-		tmp1=strchr(tmp, '@');
-		if(tmp0){//There's a '!', get the user
-			if(tmp1)
-				pMsg->user=strndup(tmp0+1, tmp1-tmp0-1);
-			else
-				pMsg->user=strdup(tmp0+1);
-			
-			*tmp0='\0';
-			pMsg->name=strdup(tmp);//Name
-			*tmp0='!';
-		}else
-			pMsg->user=NULL;
-		
-		if(tmp1){//There was a '@', get the host
-			pMsg->host=strdup(tmp1+1);
-			if(!tmp0){
-				*tmp1='\0';
-				pMsg->name=strdup(tmp);//Name
-				//*tmp1='@';
-			}
-		}else
-			pMsg->host=NULL;
-		
-		if(!tmp0 && !tmp1)
-			pMsg->name=strdup(tmp);//Name
-		
-	}else{
-		pMsg->name=NULL;
-		pMsg->user=NULL;
-		pMsg->host=NULL;
-	}
-	
-	pMsg->command=strndup(msg, strchr(msg, ' ')-msg);// Is this fine? (pointer math)
-	
-	msg=strchr(msg, ' ');//Let's move the msg beginning past the command
-	*msg='\0';
-	msg++;
-	
-	tmp0=strchr(msg, ':');
-	if(tmp0){//There is a ':', that means everything after it goes in trailing
-		pMsg->trailing=strdup(tmp0+1);
-		*tmp0='\0';
-	}else{//There is no ':', meaning the last element in the params is actually trailing
-		tmp0=strrchr(msg, ' ');
-		pMsg->trailing=strdup(tmp0+1);
-		*tmp0='\0';
-	}
-	pMsg->params=strdup(msg);
-	
-	return pMsg;
 }
 
 int recvd(char *rMsg){//Initial processing of freshly received data
@@ -358,8 +345,10 @@ int gotInput(char *buf){
 			iPrintf("Unknown command\n");
 		}
 		buf--;
-	}else
-		sPrintf(sockfd, "%s", buf);
+	}else{
+		*strchr(buf, '\n')='\0';
+		sPrintf(sockfd, "%s\r\n", buf);
+	}
 	
 	free(buf);
 	return 1;

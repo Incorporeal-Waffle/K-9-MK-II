@@ -15,7 +15,6 @@
 int main(int argc, char **argv){
 	int botPid, retVal;
 	char inttostr[4]="255";
-	char *shmpath;
 	char opt;//The option for getopt will be stored here
 	
 	//Setting up the bot state shared memory thing
@@ -74,7 +73,6 @@ int main(int argc, char **argv){
 	
 	iPrintf("Connection established.\n");//Yay
 	
-	sPrintf(sockfd, "NICK %s\r\nUSER %s 0 * :%s\r\n", nick, rName, userName);// REGISTER
 	//Store the bot state
 	mmAddEntry(shmpath, SHMKEY, "sHost", sHost);
 	mmAddEntry(shmpath, SHMKEY, "sPort", sPort);
@@ -84,6 +82,7 @@ int main(int argc, char **argv){
 	snprintf(inttostr, 4, "%d", sockfd);
 	mmAddEntry(shmpath, SHMKEY, "sockfd", inttostr);
 	
+	sPrintf(sockfd, "NICK %s\r\nUSER %s 0 * :%s\r\n", nick, rName, userName);// REGISTER
 	while(1){
 		botPid=fork();
 		if(botPid==-1){// Error
