@@ -22,6 +22,7 @@ GETAUTORUNCOMMANDS
 
 int sockfd;//Gonna need to use it from several places.
 
+#ifdef USE_CURL
 size_t getcurlshort(void *buffer, size_t size, size_t nmemb, void *userp){
 	size_t total=size*nmemb;
 	struct mthing *thing=(struct mthing *)userp;
@@ -41,6 +42,7 @@ size_t getcurlshort(void *buffer, size_t size, size_t nmemb, void *userp){
 	
 	return total;
 }
+#endif
 
 int doStuffWithMessage(struct message * msg){// The main place for adding new stuff
 	char *targetChan, *postCmd;
