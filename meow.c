@@ -22,9 +22,12 @@ GETAUTORUNCOMMANDS
 
 int sockfd;//Gonna need to use it from several places.
 
-size_t writedatafromcurl(void *buffer, size_t size, size_t nmemb, void *userp){
+size_t getcurlshort(void *buffer, size_t size, size_t nmemb, void *userp){
 	size_t total=size*nmemb;
 	struct mthing *thing=(struct mthing *)userp;
+	
+	if(thing->size>4096 || (thing->size+total)>4096)
+		return 0;
 	
 	thing->mem=realloc(thing->mem, thing->size+total);
 	if(!thing->mem){
@@ -66,7 +69,6 @@ int doStuffWithMessage(struct message * msg){// The main place for adding new st
 		cptmp0=strchr(cptmp, ' ');
 		*cptmp0='\0';
 		mmDelEntry(shmpath, SHMKEY, "nick", NULL);
-		iPrintf("New nick: %s\n", cptmp);
 		mmAddEntry(shmpath, SHMKEY, "nick", cptmp);
 		*cptmp0=' ';
 		
@@ -74,7 +76,6 @@ int doStuffWithMessage(struct message * msg){// The main place for adding new st
 		cptmp0=strchr(cptmp, ' ');
 		*cptmp0='\0';
 		mmDelEntry(shmpath, SHMKEY, "userName", NULL);
-		iPrintf("New name: %s\n", cptmp);
 		mmAddEntry(shmpath, SHMKEY, "userName", cptmp);
 		*cptmp0=' ';
 		
@@ -82,7 +83,6 @@ int doStuffWithMessage(struct message * msg){// The main place for adding new st
 		cptmp0=strchr(cptmp, ' ');
 		*cptmp0='\0';
 		mmDelEntry(shmpath, SHMKEY, "botHost", NULL);
-		iPrintf("New host: %s\n", cptmp);
 		mmAddEntry(shmpath, SHMKEY, "botHost", cptmp);
 		*cptmp0=' ';
 	}
@@ -172,9 +172,11 @@ int doStuffWithMessage(struct message * msg){// The main place for adding new st
 				
 				curl_easy_setopt(hnd, CURLOPT_URL, cptmp);
 				//"tinyurl.com/api-create.php?url=http%3a%2f%2fexample.org%2f");
-				curl_easy_setopt(hnd, CURLOPT_WRITEFUNCTION, writedatafromcurl);
+				curl_easy_setopt(hnd, CURLOPT_WRITEFUNCTION, getcurlshort);
 				curl_easy_setopt(hnd, CURLOPT_WRITEDATA, &retstr);
 				curl_easy_perform(hnd);
+				if(retstr.size>50)// We don't want to spam the entire channel with a
+					retstr.mem[49]='\0';// Cloudflare index page or anything like that.
 				//Request done, use the answer
 				sPrintf(sockfd, "PRIVMSG %s :%s\r\n", targetChan, retstr.mem);
 				//Clean up
@@ -215,8 +217,6 @@ int doStuffWithMessage(struct message * msg){// The main place for adding new st
 		//No prefix
 		#ifdef USE_CURL
 		if(strstr(msg->trailing, "http://") || strstr(msg->trailing, "https://")){
-			iPrintf("Link found!\n");
-			
 			cptmp=strstr(msg->trailing, "https://") ? strstr(msg->trailing, "https://") :
 			strstr(msg->trailing, "http://");
 			
@@ -230,20 +230,21 @@ int doStuffWithMessage(struct message * msg){// The main place for adding new st
 			//request string
 			
 			curl_easy_setopt(hnd, CURLOPT_URL, cptmp);
-			curl_easy_setopt(hnd, CURLOPT_WRITEFUNCTION, writedatafromcurl);
+			curl_easy_setopt(hnd, CURLOPT_WRITEFUNCTION, getcurlshort);
 			curl_easy_setopt(hnd, CURLOPT_WRITEDATA, &retstr);
 			curl_easy_perform(hnd);
 			//Request done, use the answer
 			while((cptmp=strchr(retstr.mem, '\r')))
 				*cptmp=' ';
-			cptmp=strstr(retstr.mem, "<title>");
+			cptmp=strstr(retstr.mem, "<title");
+			cptmp=strchr(cptmp, '>')+1;
 			if(cptmp){
-				cptmp1=strstr(retstr.mem, "</title>");
+				cptmp1=strstr(cptmp, "</title>");
 				if(cptmp1){
 					*cptmp1='\0';
 					iPrintf("Title found\n");
 					sPrintf(sockfd, "PRIVMSG %s :%c2Title:%c4 %s%c\r\n", targetChan, 
-					'\x03', '\x03', cptmp+strlen("<title>"), '\x0f');
+					'\x03', '\x03', cptmp, '\x0f');
 					//Fuck you too, whatever's causing \x03 not to work in the format str
 				}
 			}
