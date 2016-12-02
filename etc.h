@@ -39,3 +39,4 @@ char *mmGetPtr(char *path, char key);
 int mmGrowShm(char *path, char key, int newSize);
 struct mmEntry *mmMkEntry(char *type, char *value);
 
+char *strrev(char *str);

@@ -11,6 +11,25 @@
 #include "etc.h"
 #include "config.h"
 
+char *strrev(char *str){
+	char *i=str;
+	char *ri=0;
+	char tmp;
+	
+	while(*i)
+		i++;
+	ri=i-1;
+	i=str;
+	while(*i && i<ri){
+		tmp=*i;
+		*i=*ri;
+		*ri=tmp;
+		i++;
+		ri--;
+	}
+	return str;
+}
+
 int freeMessage(struct message *msg){//Frees a message struct
 	if(msg){
 		free(msg->original);

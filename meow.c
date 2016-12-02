@@ -7,6 +7,7 @@
 #include <sys/wait.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <time.h>
 #include "k-9.h"
 #include "config.h"
 #include "etc.h"
@@ -54,6 +55,7 @@ int doStuffWithMessage(struct message * msg){// The main place for adding new st
 	#endif
 	struct mthing retstr;
 	char *cptmp, *cptmp0, *cptmp1;
+	time_t timeresult;
 	
 	if(!strcmp(msg->command, "PING"))
 		sPrintf(sockfd, "PONG :%s\r\n", msg->trailing);
@@ -123,25 +125,29 @@ int doStuffWithMessage(struct message * msg){// The main place for adding new st
 		
 		//CTCP. You probably don't want to add any commands before or after this.
 		if(*msg->trailing=='\x01'){
+			if(msg->name)
+				cptmp0=msg->name;//Target
+			else
+				cptmp0=targetChan;
 			iPrintf("That was a CTCP. Be informed.\n");
 			msg->trailing++;
 			postCmd=strchr(msg->trailing, ' ')+1;
 			if(!strncmp("VERSION", msg->trailing, 7))//VERSION
 				sPrintf(sockfd, "NOTICE %s :\x01VERSION K-9-MK-II %s\x01\r\n",
-					targetChan, VERSION);
+					cptmp0, VERSION);
 			else if(!strncmp("SOURCE", msg->trailing, 6))//SOURCE
 				sPrintf(sockfd, "NOTICE %s :\x01SOURCE %s\x01\r\n",
-					targetChan, SOURCE);
+					cptmp0, SOURCE);
 			else if(!strncmp("PING", msg->trailing, 4)){//PING
 				cptmp=strchr(msg->trailing, '\x01');
 				if(cptmp){
 					*cptmp='\0';
 					sPrintf(sockfd, "NOTICE %s :\x01PING %s\x01\r\n",
-						targetChan, postCmd);
+						cptmp0, postCmd);
 					*cptmp='\x01';
 				}else
 					sPrintf(sockfd, "NOTICE %s :\x01PING \x01\r\n",
-						targetChan);
+						cptmp0);
 			}
 			
 			msg->trailing--;
@@ -156,8 +162,22 @@ int doStuffWithMessage(struct message * msg){// The main place for adding new st
 			msg->trailing++;//Ignore the prefix
 			postCmd=strchr(msg->trailing, ' ')+1;
 			
-			if(!strncmp("echo", msg->trailing, 4)){//Echo
+			if(!strncmp("echo", msg->trailing, 4))//Echo
 				sPrintf(sockfd, "PRIVMSG %s :%s\r\n", targetChan, postCmd);
+			if(!strncmp("help", msg->trailing, 4))//Help
+				sPrintf(sockfd, "PRIVMSG %s :%s\r\n", targetChan, 
+				"List of commands: echo, help, tiny, reverse, date");
+			if(!strncmp("reverse", msg->trailing, 7))//Reverse a string
+				sPrintf(sockfd, "PRIVMSG %s :%s\r\n", targetChan, strrev(postCmd));
+			if(!strncmp("date", msg->trailing, 4)){//Date
+				//Am I leaking memory here? idk. Should check somewhen
+				timeresult=time(NULL);
+				cptmp=asctime(localtime(&timeresult));
+				if(cptmp){
+					while((cptmp0=strchr(cptmp, '\n')))//Strip newlines
+						*cptmp0=' ';
+					sPrintf(sockfd, "PRIVMSG %s :%s\r\n", targetChan, cptmp);
+				}
 			}
 			#ifdef USE_CURL
 			#define TINYURLREQUESTSTRPREFIX "tinyurl.com/api-create.php?url="

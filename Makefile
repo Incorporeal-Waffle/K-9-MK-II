@@ -1,11 +1,13 @@
 .PHONY: all debug clean
 
-CFLAGS += -D_GNU_SOURCE
 CFLAGS += -DUSE_CURL -lcurl
+
+CFLAGS += -std=c99
+CFLAGS += -D_GNU_SOURCE
 
 all: k-9 meow
 
-debug: CFLAGS += -g -O0 -std=c99 -pedantic -Wall -Wextra -D_POSIX_C_SOURCE=200809L -DDEBUG -U_GNU_SOURCE
+debug: CFLAGS += -g -O0 -pedantic -Wall -Wextra -D_POSIX_C_SOURCE=200809L -DDEBUG -U_GNU_SOURCE
 debug: all
 
 k-9: etc.o
